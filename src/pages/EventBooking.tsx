@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { TablesInsert } from "@/integrations/supabase/types";
+import { TablesInsert, Tables } from "@/integrations/supabase/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
+import { useAuth } from "@/contexts/AuthContext";
 
 const eventDetails = {
   1: {
@@ -47,12 +48,14 @@ interface Seat {
 const EventBooking = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [bookingStep, setBookingStep] = useState(1);
   const [customerInfo, setCustomerInfo] = useState({ name: "", email: "", phone: "" });
   const [isProcessing, setIsProcessing] = useState(false);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [isLoadingSeats, setIsLoadingSeats] = useState(true);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
 
   const event = eventDetails[Number(eventId) as keyof typeof eventDetails];
 
@@ -76,6 +79,40 @@ const EventBooking = () => {
     }
     return seatsLayout;
   };
+
+  // Keep the pre-filling logic
+  useEffect(() => {
+    if (user) {
+      const fetchProfile = async () => {
+        setIsProfileLoading(true);
+        try {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("full_name, phone")
+            .eq("id", user.id)
+            .single();
+
+          setCustomerInfo({
+            name: profileData?.full_name || user.user_metadata.full_name || "",
+            email: user.email || "",
+            phone: profileData?.phone || "",
+          });
+        } catch (error) {
+          console.error("Error fetching profile for booking:", error);
+          setCustomerInfo({
+            name: user.user_metadata.full_name || "",
+            email: user.email || "",
+            phone: "",
+          });
+        } finally {
+          setIsProfileLoading(false);
+        }
+      };
+      fetchProfile();
+    } else {
+      setIsProfileLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!event) return;
@@ -199,6 +236,26 @@ const EventBooking = () => {
   };
 
   const renderStepContent = () => {
+    // Loading skeleton for profile data
+    if (bookingStep === 2 && isProfileLoading && user) {
+        return (
+             <div className="max-w-md mx-auto animate-fade-in">
+                <h2 className="text-3xl font-bold text-center mb-8">Customer Details</h2>
+                <div className="card-glow p-8 space-y-6">
+                    <Skeleton className="h-4 w-1/4" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-4 w-1/4" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-4 w-1/4" />
+                    <Skeleton className="h-10 w-full" />
+                    <div className="border-t border-border pt-4">
+                        <Skeleton className="h-12 w-full" />
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
     switch (bookingStep) {
       case 1:
         return (
@@ -312,16 +369,41 @@ const EventBooking = () => {
               <div className="space-y-6">
                 <div>
                   <Label htmlFor="name">Full Name</Label>
-                  <Input id="name" value={customerInfo.name} onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})} placeholder="Enter your full name" />
+                  <Input 
+                    id="name" 
+                    value={customerInfo.name} 
+                    onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})} 
+                    placeholder="Enter your full name" 
+                    // REMOVED: disabled={!!user && !isProfileLoading}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="email">Email Address</Label>
-                  <Input id="email" type="email" value={customerInfo.email} onChange={(e) => setCustomerInfo({...customerInfo, email: e.target.value})} placeholder="Enter your email" />
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    value={customerInfo.email} 
+                    onChange={(e) => setCustomerInfo({...customerInfo, email: e.target.value})} 
+                    placeholder="Enter your email" 
+                    // REMOVED: disabled={!!user && !isProfileLoading}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="phone">Phone Number</Label>
-                  <Input id="phone" type="tel" value={customerInfo.phone} onChange={(e) => setCustomerInfo({...customerInfo, phone: e.target.value})} placeholder="Enter your phone number" />
+                  <Input 
+                    id="phone" 
+                    type="tel" 
+                    value={customerInfo.phone} 
+                    onChange={(e) => setCustomerInfo({...customerInfo, phone: e.target.value})} 
+                    placeholder="Enter your phone number" 
+                    // REMOVED: disabled={!!user && !isProfileLoading}
+                  />
                 </div>
+                {!!user && (
+                    <div className="text-xs text-muted-foreground pt-2">
+                        Your information is pre-filled from your profile. Feel free to edit if booking for someone else.
+                    </div>
+                )}
                 <div className="border-t border-border pt-4">
                   <div className="flex justify-between mb-2">
                     <span>Seats: {selectedSeats.join(", ")}</span>

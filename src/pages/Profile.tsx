@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TicketCard } from "@/components/TicketCard"; // Import the new TicketCard component
-import { UserCircleIcon, TicketIcon, ArrowRightOnRectangleIcon } from "@heroicons/react/24/outline";
+import { TicketCard } from "@/components/TicketCard"; 
+import { UserCircleIcon, TicketIcon, ArrowRightOnRectangleIcon } from "@heroicons/react/24/outline"; // <<< Removed CheckIcon, XMarkIcon, EnvelopeIcon
 
 interface Profile {
   full_name: string;
@@ -17,11 +17,14 @@ interface Profile {
   profession: string;
 }
 
+// <<< UPDATED INTERFACE (Removed email status fields)
 interface Booking {
   event_title: string;
   event_date: string;
   event_time: string;
   selected_seats: string[];
+  // is_email_sent and email_status_message removed
+  is_ticket_active: boolean; 
 }
 
 const Profile = () => {
@@ -54,17 +57,17 @@ const Profile = () => {
         setProfile(profileData);
       }
       
-      // Fetch Bookings
+      // Fetch Bookings (Only including remaining field)
       const { data: bookingsData, error: bookingsError } = await supabase
         .from("bookings")
-        .select("event_title, event_date, event_time, selected_seats")
+        .select("event_title, event_date, event_time, selected_seats, is_ticket_active") // <<< ONLY FETCHING KEPT FIELD
         .eq("customer_email", user.email)
         .order("created_at", { ascending: false });
 
       if (bookingsError) {
         toast.error(`Failed to fetch bookings: ${bookingsError.message}`);
       } else {
-        setBookings(bookingsData);
+        setBookings(bookingsData as unknown as Booking[]);
       }
 
       setLoading(false);
@@ -103,6 +106,8 @@ const Profile = () => {
     toast.success("You have been signed out.");
   }
   
+  // <<< REMOVED renderEmailStatus helper function
+
   if (loading) {
     return (
        <div className="pt-24 min-h-screen">
@@ -190,14 +195,29 @@ const Profile = () => {
               <div className="space-y-8">
                 {bookings.length > 0 ? (
                   bookings.map((booking, index) => (
-                    <TicketCard
-                      key={index}
-                      eventName={booking.event_title}
-                      eventDate={booking.event_date}
-                      eventTime={booking.event_time}
-                      seats={booking.selected_seats}
-                      userName={profile?.full_name || user?.email || "Attendee"}
-                    />
+                    <div key={index} className="space-y-2">
+                        {/* Display the Ticket Card */}
+                        <TicketCard
+                            eventName={booking.event_title}
+                            eventDate={booking.event_date}
+                            eventTime={booking.event_time}
+                            seats={booking.selected_seats}
+                            userName={profile?.full_name || user?.email || "Attendee"}
+                        />
+                        
+                        {/* Display the Status - Only is_ticket_active is checked now */}
+                        <div className="flex justify-between items-center px-4 py-2 bg-card/70 border border-border/50 rounded-lg">
+                            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                                {/* Since tickets are only inserted on successful payment, we assume active unless explicitly set to false */}
+                                <span className={booking.is_ticket_active ? "text-green-400" : "text-destructive"}>
+                                    {booking.is_ticket_active ? 'Active Ticket' : 'Ticket Invalidated'}
+                                </span>
+                            </div>
+                            
+                            {/* Simple text for clarity since we removed email status */}
+                            <span className="text-sm text-muted-foreground">Confirmation process complete.</span>
+                        </div>
+                    </div>
                   ))
                 ) : (
                   <div className="text-center py-16 border-2 border-dashed border-border/50 rounded-lg">

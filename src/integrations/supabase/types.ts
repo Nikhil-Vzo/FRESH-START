@@ -108,6 +108,41 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: { // <-- RE-ADDED PROFILE TABLE DEFINITION
+        Row: {
+          id: string
+          updated_at: string | null
+          full_name: string | null
+          phone: string | null
+          address: string | null
+          profession: string | null
+        }
+        Insert: {
+          id: string
+          updated_at?: string | null
+          full_name?: string | null
+          phone?: string | null
+          address?: string | null
+          profession?: string | null
+        }
+        Update: {
+          id?: string
+          updated_at?: string | null
+          full_name?: string | null
+          phone?: string | null
+          address?: string | null
+          profession?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       speaker_registrations: { // <-- NEW TABLE DEFINITION
         Row: {
           created_at: string
@@ -246,4 +281,3 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof Database["public"]["CompositeTypes"]
   ? Database["public"]["CompositeTypes"][PublicCompositeTypeNameOrOptions]
   : never
-

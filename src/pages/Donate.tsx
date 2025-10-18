@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { HeartIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,10 +6,14 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import axios from "axios";
 import { TablesInsert } from "@/integrations/supabase/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const predefinedAmounts = [500, 1000, 2000, 5000];
 
 const Donate = () => {
+  const { user } = useAuth();
   const [selectedAmount, setSelectedAmount] = useState(1000);
   const [customAmount, setCustomAmount] = useState("");
   const [isCustom, setIsCustom] = useState(false);
@@ -20,6 +24,42 @@ const Donate = () => {
     message: ""
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+
+  // Keep the pre-filling logic
+  useEffect(() => {
+    if (user) {
+      const fetchProfile = async () => {
+        setIsProfileLoading(true);
+        try {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("full_name, phone")
+            .eq("id", user.id)
+            .single();
+
+          setDonorInfo(currentInfo => ({
+            ...currentInfo,
+            name: profileData?.full_name || user.user_metadata.full_name || "",
+            email: user.email || "",
+            phone: profileData?.phone || "",
+          }));
+        } catch (error) {
+          console.error("Error fetching profile for donation:", error);
+          setDonorInfo(currentInfo => ({
+             ...currentInfo,
+             name: user.user_metadata.full_name || "",
+             email: user.email || "",
+          }));
+        } finally {
+          setIsProfileLoading(false);
+        }
+      };
+      fetchProfile();
+    } else {
+      setIsProfileLoading(false);
+    }
+  }, [user]);
 
   const handleAmountSelect = (amount: number) => {
     setSelectedAmount(amount);
@@ -149,44 +189,90 @@ const Donate = () => {
               <h2 className="text-3xl font-bold mb-8">
                 Your <span className="gradient-text">Information</span>
               </h2>
-              <div className="space-y-6">
-                <div>
-                  <Label htmlFor="donor-name" className="text-sm font-medium mb-2 block">
-                    Full Name *
-                  </Label>
-                  <Input id="donor-name" type="text" placeholder="Enter your full name" value={donorInfo.name} onChange={(e) => setDonorInfo({...donorInfo, name: e.target.value})} required />
-                </div>
-                <div>
-                  <Label htmlFor="donor-email" className="text-sm font-medium mb-2 block">
-                    Email Address *
-                  </Label>
-                  <Input id="donor-email" type="email" placeholder="Enter your email address" value={donorInfo.email} onChange={(e) => setDonorInfo({...donorInfo, email: e.target.value})} required />
-                </div>
-                <div>
-                  <Label htmlFor="donor-phone" className="text-sm font-medium mb-2 block">
-                    Phone Number (Optional)
-                  </Label>
-                  <Input id="donor-phone" type="tel" placeholder="Enter your phone number" value={donorInfo.phone} onChange={(e) => setDonorInfo({...donorInfo, phone: e.target.value})} />
-                </div>
-                <div>
-                  <Label htmlFor="donor-message" className="text-sm font-medium mb-2 block">
-                    Message (Optional)
-                  </Label>
-                  <textarea id="donor-message" rows={4} placeholder="Share a message..." value={donorInfo.message} onChange={(e) => setDonorInfo({...donorInfo, message: e.target.value})} className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent" />
-                </div>
-                <div className="card-glow p-6">
-                  <h3 className="text-lg font-bold mb-4">Donation Summary</h3>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex justify-between">
-                      <span>Donation Amount:</span>
-                      <span className="text-2xl font-bold gradient-text">₹{finalAmount.toLocaleString()}</span>
-                    </div>
+              {isProfileLoading && user ? (
+                 <div className="space-y-6 card-glow p-8">
+                    <Skeleton className="h-4 w-1/4" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-4 w-1/4" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-4 w-1/4" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-40 w-full" />
+                 </div>
+              ) : (
+                <div className="space-y-6">
+                  <div>
+                    <Label htmlFor="donor-name" className="text-sm font-medium mb-2 block">
+                      Full Name *
+                    </Label>
+                    <Input 
+                        id="donor-name" 
+                        type="text" 
+                        placeholder="Enter your full name" 
+                        value={donorInfo.name} 
+                        onChange={(e) => setDonorInfo({...donorInfo, name: e.target.value})} 
+                        required 
+                        // REMOVED: disabled={!!user}
+                    />
+                    {!!user && (
+                         <p className="text-xs text-muted-foreground pt-1">
+                             Pre-filled from your profile. Feel free to edit if donating for someone else.
+                         </p>
+                    )}
                   </div>
-                  <Button onClick={handleDonate} disabled={isProcessing || finalAmount < 1} className="w-full hero-button">
-                    {isProcessing ? "Processing..." : `Donate ₹${finalAmount.toLocaleString()}`}
-                  </Button>
+                  <div>
+                    <Label htmlFor="donor-email" className="text-sm font-medium mb-2 block">
+                      Email Address *
+                    </Label>
+                    <Input 
+                        id="donor-email" 
+                        type="email" 
+                        placeholder="Enter your email address" 
+                        value={donorInfo.email} 
+                        onChange={(e) => setDonorInfo({...donorInfo, email: e.target.value})} 
+                        required 
+                        // REMOVED: disabled={!!user}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="donor-phone" className="text-sm font-medium mb-2 block">
+                      Phone Number (Optional)
+                    </Label>
+                    <Input 
+                        id="donor-phone" 
+                        type="tel" 
+                        placeholder="Enter your phone number" 
+                        value={donorInfo.phone} 
+                        onChange={(e) => setDonorInfo({...donorInfo, phone: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="donor-message" className="text-sm font-medium mb-2 block">
+                      Message (Optional)
+                    </Label>
+                    <textarea 
+                      id="donor-message" 
+                      rows={4} 
+                      placeholder="Share a message..." 
+                      value={donorInfo.message} 
+                      onChange={(e) => setDonorInfo({...donorInfo, message: e.target.value})} 
+                      className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent" 
+                    />
+                  </div>
+                  <div className="card-glow p-6">
+                    <h3 className="text-lg font-bold mb-4">Donation Summary</h3>
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between">
+                        <span>Donation Amount:</span>
+                        <span className="text-2xl font-bold gradient-text">₹{finalAmount.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <Button onClick={handleDonate} disabled={isProcessing || finalAmount < 1} className="w-full hero-button">
+                      {isProcessing ? "Processing..." : `Donate ₹${finalAmount.toLocaleString()}`}
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

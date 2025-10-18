@@ -29,8 +29,10 @@ export const TicketCard = ({ eventName, eventDate, eventTime, seats, userName }:
             </div>
           </div>
           <div className="flex items-start space-x-2">
-            {/* FIX IS ON THE NEXT LINE */}
-            <p className="text-3xl font-bold text-primary mr-2">{seats.length}</p>
+            {/* FIX APPLIED: Removed the extra <p> tag that was mis-used for seat count */}
+            <div className="h-4 w-4 mt-1 text-primary flex-shrink-0 flex items-center justify-center">
+                <span className="text-sm font-bold">{seats.length}</span>
+            </div>
             <div>
               <p className="font-semibold text-muted-foreground">Seat(s)</p>
               <p className="font-bold text-foreground">{seats.join(", ")}</p>
