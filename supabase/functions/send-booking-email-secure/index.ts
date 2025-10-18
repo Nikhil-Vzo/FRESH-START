@@ -43,7 +43,8 @@ serve(async (req) => {
     }
 
     const { data, error } = await resend.emails.send({
-      from: "TEDxAUC Confirmation <onboarding@resend.dev>",
+      // 🐛 FIX APPLIED HERE: Changed from 'tickets@tedxauc.org' to your verified domain 'tickets@tedxamity.com'
+      from: "TEDxAUC Tickets <tickets@tedxamity.com>", 
       to: [customer_email],
       subject: `Your Ticket Confirmation for ${event_title}`,
       // --- REDESIGNED HTML TEMPLATE ---

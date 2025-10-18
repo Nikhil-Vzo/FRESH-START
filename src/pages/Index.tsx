@@ -27,10 +27,10 @@ const Index = () => {
                   <ArrowRightIcon className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
-              <Button variant="outline" className="px-8 py-4 text-lg border-primary/30 hover:border-primary hover:bg-primary/10 group">
+              {/* <Button variant="outline" className="px-8 py-4 text-lg border-primary/30 hover:border-primary hover:bg-primary/10 group">
                 <PlayIcon className="mr-2 h-5 w-5 transition-transform group-hover:scale-110" />
                 Watch Previous Talks
-              </Button>
+              </Button> */}
             </div>
           </div>
         </div>
