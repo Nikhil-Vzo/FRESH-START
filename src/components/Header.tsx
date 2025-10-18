@@ -91,63 +91,66 @@ export const Header = () => {
       </nav>
       
       {/* Mobile menu */}
-      <div className={`lg:hidden ${mobileMenuOpen ? 'fixed inset-0 z-50' : 'hidden'}`}>
-        <div className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto bg-background px-6 py-6 sm:max-w-sm sm:ring-1 sm:ring-border/10">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="-m-1.5 p-1.5 flex items-center space-x-3">
-              <img className="h-8 w-auto" src={tedxaucLogo} alt="TEDxAUC" />
-              <span className="text-xl font-bold gradient-text">TEDxAUC</span>
-            </Link>
-            <button
-              type="button"
-              className="-m-2.5 rounded-md p-2.5 text-foreground hover:text-primary transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <XMarkIcon className="h-6 w-6" aria-hidden="true" />
-            </button>
-          </div>
-          <div className="mt-6 flow-root">
-            <div className="-my-6 divide-y divide-border/50">
-              <div className="space-y-2 py-6">
-                {navigation.map((item) => (
+      {/* Outer wrapper for dim background and z-index control */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden bg-black/50 backdrop-blur-sm">
+          <div className="fixed inset-y-0 right-0 z-[70] w-full overflow-y-auto bg-background px-6 py-6 sm:max-w-sm sm:ring-1 sm:ring-border/10">
+            <div className="flex items-center justify-between">
+              <Link to="/" className="-m-1.5 p-1.5 flex items-center space-x-3">
+                <img className="h-8 w-auto" src={tedxaucLogo} alt="TEDxAUC" />
+                <span className="text-xl font-bold gradient-text">TEDxAUC</span>
+              </Link>
+              <button
+                type="button"
+                className="-m-2.5 rounded-md p-2.5 text-foreground hover:text-primary transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <XMarkIcon className="h-6 w-6" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="mt-6 flow-root">
+              <div className="-my-6 divide-y divide-border/50">
+                <div className="space-y-2 py-6">
+                  {navigation.map((item) => (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      className={`-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 transition-all duration-300 hover:bg-muted ${
+                        isActive(item.href) ? "text-primary bg-muted" : "text-foreground"
+                      }`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
+                <div className="py-6 space-y-4">
+                  {user ? (
+                    <Link to="/profile" className="block text-center" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="outline" className="w-full">
+                        Profile
+                      </Button>
+                    </Link>
+                  ) : (
+                     <Link to="/login" className="block text-center" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="outline" className="w-full">
+                        Login / Sign Up
+                      </Button>
+                    </Link>
+                  )}
                   <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 transition-all duration-300 hover:bg-muted ${
-                      isActive(item.href) ? "text-primary bg-muted" : "text-foreground"
-                    }`}
+                    to="/donate"
+                    className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors block text-center"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    {item.name}
+                    Donate
                   </Link>
-                ))}
-              </div>
-              <div className="py-6 space-y-4">
-                {user ? (
-                  <Link to="/profile" className="block text-center" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="outline" className="w-full">
-                      Profile
-                    </Button>
-                  </Link>
-                ) : (
-                   <Link to="/login" className="block text-center" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="outline" className="w-full">
-                      Login / Sign Up
-                    </Button>
-                  </Link>
-                )}
-                <Link
-                  to="/donate"
-                  className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors block text-center"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Donate
-                </Link>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </header>
   );
 };

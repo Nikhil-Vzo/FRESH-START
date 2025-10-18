@@ -108,7 +108,49 @@ export type Database = {
         }
         Relationships: []
       }
-      speakers: { // <--- NEW SPEAKERS TABLE ADDED
+      events: { // <--- NEW EVENTS TABLE ADDED
+        Row: {
+          id: number
+          created_at: string
+          title: string
+          date: string
+          time: string
+          location: string
+          description: string
+          image_url: string
+          status: "ongoing" | "upcoming" | "completed"
+          tickets_available: boolean
+          gallery_images: string[] | null
+        }
+        Insert: {
+          id?: number
+          created_at?: string
+          title: string
+          date: string
+          time: string
+          location: string
+          description: string
+          image_url: string
+          status: "ongoing" | "upcoming" | "completed"
+          tickets_available: boolean
+          gallery_images?: string[] | null
+        }
+        Update: {
+          id?: number
+          created_at?: string
+          title?: string
+          date?: string
+          time?: string
+          location?: string
+          description?: string
+          image_url?: string
+          status?: "ongoing" | "upcoming" | "completed"
+          tickets_available?: boolean
+          gallery_images?: string[] | null
+        }
+        Relationships: []
+      }
+      speakers: {
         Row: {
           id: number
           created_at: string

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeftIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
@@ -6,34 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { TablesInsert, Tables } from "@/integrations/supabase/types";
+import { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
-import { useAuth } from "@/contexts/AuthContext";
-
-const eventDetails = {
-  1: {
-    title: "Innovation Summit 2024",
-    date: "October 15, 2024",
-    time: "10:00 AM - 6:00 PM",
-    location: "Main Auditorium, Amity University",
-    price: 500
-  },
-  2: {
-    title: "Future of AI & Technology",
-    date: "November 20, 2024",
-    time: "2:00 PM - 8:00 PM",
-    location: "Tech Center, Amity University",
-    price: 750
-  },
-  3: {
-    title: "Sustainable Future Conference",
-    date: "December 10, 2024",
-    time: "9:00 AM - 5:00 PM",
-    location: "Green Campus, Amity University",
-    price: 600
-  }
-};
 
 type SeatStatus = "available" | "selected" | "booked";
 
@@ -45,110 +20,131 @@ interface Seat {
   price: number;
 }
 
+interface EventData extends Tables<"events"> {} // Define EventData from DB types
+
 const EventBooking = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [bookingStep, setBookingStep] = useState(1);
   const [customerInfo, setCustomerInfo] = useState({ name: "", email: "", phone: "" });
   const [isProcessing, setIsProcessing] = useState(false);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [isLoadingSeats, setIsLoadingSeats] = useState(true);
-  const [isProfileLoading, setIsProfileLoading] = useState(true);
 
-  const event = eventDetails[Number(eventId) as keyof typeof eventDetails];
+  // --- START: New Dynamic State and Logic ---
+  const [event, setEvent] = useState<EventData | null>(null);
+  const [isLoadingEvent, setIsLoadingEvent] = useState(true);
 
-  const generateSeats = (): Seat[] => {
+  // Helper function for generating seats (now accepts price)
+  const generateSeats = (price: number): Seat[] => {
     const seatsLayout: Seat[] = [];
-    if (!event) return [];
     const regularRows = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
     regularRows.forEach((row) => {
       for (let i = 1; i <= 28; i++) {
-        seatsLayout.push({ id: `${row}${i}`, row, number: i, status: "available", price: event.price });
+        seatsLayout.push({ id: `${row}${i}`, row, number: i, status: "available", price: price });
       }
     });
     const backRows = ["J", "K", "L", "M"];
     backRows.forEach((row) => {
       for (let i = 1; i <= 22; i++) {
-        seatsLayout.push({ id: `${row}${i}`, row, number: i, status: "available", price: event.price });
+        seatsLayout.push({ id: `${row}${i}`, row, number: i, status: "available", price: price });
       }
     });
     for (let i = 1; i <= 9; i++) {
-      seatsLayout.push({ id: `LAST${i}`, row: "LAST", number: i, status: "available", price: event.price });
+      seatsLayout.push({ id: `LAST${i}`, row: "LAST", number: i, status: "available", price: price });
     }
     return seatsLayout;
   };
 
-  // Keep the pre-filling logic
-  useEffect(() => {
-    if (user) {
-      const fetchProfile = async () => {
-        setIsProfileLoading(true);
-        try {
-          const { data: profileData } = await supabase
-            .from("profiles")
-            .select("full_name, phone")
-            .eq("id", user.id)
-            .single();
+  const fetchEventAndSeats = useCallback(async (id: number) => {
+    setIsLoadingEvent(true);
+    setIsLoadingSeats(true);
+    
+    let fetchedEvent: EventData | null = null;
+    let eventTitle: string | undefined;
 
-          setCustomerInfo({
-            name: profileData?.full_name || user.user_metadata.full_name || "",
-            email: user.email || "",
-            phone: profileData?.phone || "",
-          });
-        } catch (error) {
-          console.error("Error fetching profile for booking:", error);
-          setCustomerInfo({
-            name: user.user_metadata.full_name || "",
-            email: user.email || "",
-            phone: "",
-          });
-        } finally {
-          setIsProfileLoading(false);
-        }
-      };
-      fetchProfile();
-    } else {
-      setIsProfileLoading(false);
+    // 1. Fetch Event Details
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .eq("id", id)
+        .single();
+      
+      if (error) throw error;
+
+      fetchedEvent = data as EventData;
+      eventTitle = fetchedEvent.title.trim();
+      setEvent(fetchedEvent);
+
+    } catch (error) {
+      console.error("Error fetching event details:", error);
+      setIsLoadingEvent(false);
+      toast.error("Could not load event details. Please check the URL.");
+      return;
     }
-  }, [user]);
+
+    // 2. Generate initial seats and fetch booked seats
+    if (fetchedEvent) {
+        try {
+            const { data: bookings, error: bookingsError } = await supabase
+            .from('bookings')
+            .select('selected_seats')
+            .eq('event_title', eventTitle);
+
+            if (bookingsError) throw bookingsError;
+
+            const allBookedSeats = bookings.flatMap(booking => booking.selected_seats);
+            // Use price from fetched event, falling back to 500 if undefined or null
+            const eventPrice = fetchedEvent.price || 500; 
+
+            const initialSeats = generateSeats(eventPrice); 
+            const updatedSeats = initialSeats.map(seat => ({
+                ...seat,
+                status: allBookedSeats.includes(seat.id) ? 'booked' : 'available' as SeatStatus
+            }));
+            
+            setSeats(updatedSeats);
+
+        } catch (error) {
+            console.error("Error fetching booked seats:", error);
+            toast.error("Could not load seat availability. Please refresh.");
+            // Generate seats even on error, using a safe price
+            setSeats(generateSeats(fetchedEvent.price || 500));
+        } finally {
+            setIsLoadingSeats(false);
+            setIsLoadingEvent(false);
+        }
+    }
+  }, []); 
 
   useEffect(() => {
-    if (!event) return;
+    const id = Number(eventId);
+    if (!isNaN(id) && id > 0) {
+      fetchEventAndSeats(id);
+    } else {
+        setIsLoadingEvent(false);
+        setEvent(null);
+    }
+  }, [eventId, fetchEventAndSeats]);
 
-    const fetchAndSetSeats = async () => {
-      setIsLoadingSeats(true);
-      try {
-        const { data: bookings, error } = await supabase
-          .from('bookings')
-          .select('selected_seats')
-          .eq('event_title', event.title.trim());
+  // --- END: New Dynamic State and Logic ---
 
-        if (error) throw error;
+  if (isLoadingEvent) {
+     return (
+        <div className="pt-24 min-h-screen flex items-center justify-center">
+            <div className="text-center p-8 max-w-md w-full">
+                <Skeleton className="h-10 w-3/4 mx-auto mb-4" />
+                <Skeleton className="h-4 w-1/2 mx-auto mb-10" />
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-40 w-full mt-4" />
+            </div>
+        </div>
+     );
+  }
 
-        const allBookedSeats = bookings.flatMap(booking => booking.selected_seats);
-        
-        const initialSeats = generateSeats();
-        const updatedSeats = initialSeats.map(seat => ({
-          ...seat,
-          status: allBookedSeats.includes(seat.id) ? 'booked' : 'available' as SeatStatus
-        }));
-        
-        setSeats(updatedSeats);
-
-      } catch (error) {
-        console.error("Error fetching booked seats:", error);
-        toast.error("Could not load seat availability. Please refresh.");
-        setSeats(generateSeats());
-      } finally {
-        setIsLoadingSeats(false);
-      }
-    };
-
-    fetchAndSetSeats();
-  }, [event]);
-
+  // If loading is complete but no event was found
   if (!event) {
     return (
       <div className="pt-24 min-h-screen flex items-center justify-center">
@@ -176,7 +172,9 @@ const EventBooking = () => {
     return "bg-card border border-border hover:border-primary hover:bg-primary/10 cursor-pointer";
   };
 
-  const totalAmount = selectedSeats.length * (event.price || 500);
+  // Ensure event.price is a number before calculating
+  const eventPrice = event.price || 0;
+  const totalAmount = selectedSeats.length * eventPrice; 
 
   const handleBookingSubmit = async () => {
     if (bookingStep === 1) {
@@ -236,26 +234,6 @@ const EventBooking = () => {
   };
 
   const renderStepContent = () => {
-    // Loading skeleton for profile data
-    if (bookingStep === 2 && isProfileLoading && user) {
-        return (
-             <div className="max-w-md mx-auto animate-fade-in">
-                <h2 className="text-3xl font-bold text-center mb-8">Customer Details</h2>
-                <div className="card-glow p-8 space-y-6">
-                    <Skeleton className="h-4 w-1/4" />
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-4 w-1/4" />
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-4 w-1/4" />
-                    <Skeleton className="h-10 w-full" />
-                    <div className="border-t border-border pt-4">
-                        <Skeleton className="h-12 w-full" />
-                    </div>
-                </div>
-            </div>
-        )
-    }
-
     switch (bookingStep) {
       case 1:
         return (
@@ -266,6 +244,8 @@ const EventBooking = () => {
                 <span className="text-lg font-semibold gradient-text">SCREEN</span>
               </div>
             </div>
+            
+            {/* --- START: Seating Area (Mobile Scroll Fix) --- */}
             {isLoadingSeats ? (
               <div className="max-w-6xl mx-auto space-y-2">
                 {[...Array(13)].map((_, i) => (
@@ -279,60 +259,67 @@ const EventBooking = () => {
                 ))}
               </div>
             ) : (
-              <div className="max-w-6xl mx-auto overflow-x-auto pb-4">
-                <div className="space-y-2 mb-8 min-w-[800px]">
-                  {["A", "B", "C", "D", "E", "F", "G", "H", "I"].map((row) => (
-                    <div key={row} className="flex items-center justify-center gap-4">
-                      <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
-                      <div className="flex gap-1">
-                        {seats.filter(s => s.row === row && s.number <= 14).map(seat => (
-                          <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                <>
+                <p className="text-center text-sm text-muted-foreground mb-4 md:hidden">
+                    ← Swipe/Scroll horizontally to see all seats →
+                </p>
+                <div className="max-w-full overflow-x-auto pb-4 hide-scrollbar"> {/* Added overflow-x-auto */}
+                    <div className="min-w-[800px] mx-auto space-y-2 mb-8"> {/* Increased min-width for larger display */}
+                        {["A", "B", "C", "D", "E", "F", "G", "H", "I"].map((row) => (
+                            <div key={row} className="flex items-center justify-center gap-4">
+                                <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
+                                <div className="flex gap-1">
+                                    {seats.filter(s => s.row === row && s.number <= 14).map(seat => (
+                                        <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                                    ))}
+                                </div>
+                                <div className="w-8"></div> {/* Aisle */}
+                                <div className="flex gap-1">
+                                    {seats.filter(s => s.row === row && s.number > 14).map(seat => (
+                                        <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                                    ))}
+                                </div>
+                                <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
+                            </div>
                         ))}
-                      </div>
-                      <div className="w-8"></div>
-                      <div className="flex gap-1">
-                        {seats.filter(s => s.row === row && s.number > 14).map(seat => (
-                          <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                        <div className="h-8"></div>
+                        {["J", "K", "L", "M"].map((row) => (
+                            <div key={row} className="flex items-center justify-center gap-4">
+                                <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
+                                <div className="flex gap-1">
+                                    {seats.filter(s => s.row === row && s.number <= 4).map(seat => (
+                                        <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                                    ))}
+                                </div>
+                                <div className="w-8"></div> {/* Aisle */}
+                                <div className="flex gap-1">
+                                    {seats.filter(s => s.row === row && s.number > 4 && s.number <= 18).map(seat => (
+                                        <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                                    ))}
+                                </div>
+                                <div className="w-8"></div> {/* Aisle */}
+                                <div className="flex gap-1">
+                                    {seats.filter(s => s.row === row && s.number > 18).map(seat => (
+                                        <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                                    ))}
+                                </div>
+                                <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
+                            </div>
                         ))}
-                      </div>
-                      <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
+                        <div className="flex items-center justify-center gap-4 pt-4 border-t border-dashed border-border">
+                            <div className="flex gap-1">
+                                {seats.filter(s => s.row === "LAST").map(seat => (
+                                    <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
+                                ))}
+                            </div>
+                            <span className="text-sm text-muted-foreground">Last Row</span>
+                        </div>
                     </div>
-                  ))}
-                  <div className="h-8"></div>
-                  {["J", "K", "L", "M"].map((row) => (
-                    <div key={row} className="flex items-center justify-center gap-4">
-                       <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
-                      <div className="flex gap-1">
-                        {seats.filter(s => s.row === row && s.number <= 4).map(seat => (
-                          <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
-                        ))}
-                      </div>
-                      <div className="w-8"></div>
-                       <div className="flex gap-1">
-                        {seats.filter(s => s.row === row && s.number > 4 && s.number <= 18).map(seat => (
-                          <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
-                        ))}
-                      </div>
-                       <div className="w-8"></div>
-                       <div className="flex gap-1">
-                        {seats.filter(s => s.row === row && s.number > 18).map(seat => (
-                          <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
-                        ))}
-                      </div>
-                       <span className="w-8 text-center font-bold text-muted-foreground">{row}</span>
-                    </div>
-                  ))}
-                   <div className="flex items-center justify-center gap-4 pt-4 border-t border-dashed border-border">
-                    <div className="flex gap-1">
-                        {seats.filter(s => s.row === "LAST").map(seat => (
-                          <button key={seat.id} onClick={() => handleSeatClick(seat.id)} className={`w-6 h-6 rounded text-xs font-bold transition-all duration-200 ${getSeatColor(seat)}`} disabled={seat.status === 'booked'}>{seat.number}</button>
-                        ))}
-                      </div>
-                       <span className="text-sm text-muted-foreground">Last Row</span>
-                  </div>
                 </div>
-              </div>
+                </>
             )}
+            {/* --- END: Seating Area (Mobile Scroll Fix) --- */}
+
             {selectedSeats.length > 0 && (
               <div className="card-glow p-6 max-w-md mx-auto mt-8">
                 <h3 className="text-lg font-bold mb-4">Booking Summary</h3>
@@ -347,7 +334,7 @@ const EventBooking = () => {
                   </div>
                   <div className="flex justify-between">
                     <span>Price per seat:</span>
-                    <span className="font-semibold">₹{event.price}</span>
+                    <span className="font-semibold">₹{eventPrice}</span>
                   </div>
                   <div className="border-t border-border pt-2 flex justify-between text-lg font-bold">
                     <span>Total:</span>
@@ -369,41 +356,16 @@ const EventBooking = () => {
               <div className="space-y-6">
                 <div>
                   <Label htmlFor="name">Full Name</Label>
-                  <Input 
-                    id="name" 
-                    value={customerInfo.name} 
-                    onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})} 
-                    placeholder="Enter your full name" 
-                    // REMOVED: disabled={!!user && !isProfileLoading}
-                  />
+                  <Input id="name" value={customerInfo.name} onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})} placeholder="Enter your full name" />
                 </div>
                 <div>
                   <Label htmlFor="email">Email Address</Label>
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    value={customerInfo.email} 
-                    onChange={(e) => setCustomerInfo({...customerInfo, email: e.target.value})} 
-                    placeholder="Enter your email" 
-                    // REMOVED: disabled={!!user && !isProfileLoading}
-                  />
+                  <Input id="email" type="email" value={customerInfo.email} onChange={(e) => setCustomerInfo({...customerInfo, email: e.target.value})} placeholder="Enter your email" />
                 </div>
                 <div>
                   <Label htmlFor="phone">Phone Number</Label>
-                  <Input 
-                    id="phone" 
-                    type="tel" 
-                    value={customerInfo.phone} 
-                    onChange={(e) => setCustomerInfo({...customerInfo, phone: e.target.value})} 
-                    placeholder="Enter your phone number" 
-                    // REMOVED: disabled={!!user && !isProfileLoading}
-                  />
+                  <Input id="phone" type="tel" value={customerInfo.phone} onChange={(e) => setCustomerInfo({...customerInfo, phone: e.target.value})} placeholder="Enter your phone number" />
                 </div>
-                {!!user && (
-                    <div className="text-xs text-muted-foreground pt-2">
-                        Your information is pre-filled from your profile. Feel free to edit if booking for someone else.
-                    </div>
-                )}
                 <div className="border-t border-border pt-4">
                   <div className="flex justify-between mb-2">
                     <span>Seats: {selectedSeats.join(", ")}</span>
@@ -440,6 +402,7 @@ const EventBooking = () => {
               <span>Back</span>
             </Button>
             <div className="text-right">
+              {/* Use dynamic event details */}
               <h1 className="text-2xl font-bold gradient-text">{event.title}</h1>
               <p className="text-muted-foreground">{event.date} • {event.time}</p>
             </div>

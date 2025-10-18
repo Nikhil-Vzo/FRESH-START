@@ -21,18 +21,19 @@ const SignUp = () => {
     }
     setIsSubmitting(true);
     try {
+      // The full_name data is no longer sent here, the database trigger will handle 
+      // the profile creation using the user's ID and email.
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
+        // Removed: options: { data: { full_name: fullName } }
       });
 
       if (error) throw error;
 
+      // The full name will be stored in the public.profiles table by a trigger
+      // You may need to manually update the public.profiles table in Supabase
+      // for the new user after signup to set the initial full_name.
       toast.success("Registration successful! Please check your email to confirm your account.");
       navigate("/"); // Redirect to home page after sign up
     } catch (error: any) {
