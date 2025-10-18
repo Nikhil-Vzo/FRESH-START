@@ -1,39 +1,82 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { Resend } from "https://esm.sh/resend@3.2.0";
 
-console.log("Edge Function 'send-booking-email' is starting up.");
+console.log("Edge Function 'send-booking-email-secure' (Simple Email + CORS) is starting up.");
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY")!);
+// --- Environment Variables ---
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const WEBHOOK_SECRET = Deno.env.get('EMAIL_WEBHOOK_SECRET'); // Match the dashboard name
 
-// --- THIS IS THE LINE TO CHANGE ---
-// Replace the placeholder with the public URL you copied from Supabase Storage.
+// --- Your Logo URL ---
 const LOGO_URL = "https://lehpiptexuxbnxgdunmc.supabase.co/storage/v1/object/public/assets/tedxauc-logo-new.png"; 
 
-serve(async (req) => {
-  try {
-    const { record } = await req.json();
-    console.log("Received a new booking record:", record);
+// --- Initialize Resend ---
+const resend = new Resend(RESEND_API_KEY!);
 
-    const { 
-      customer_name, 
-      customer_email, 
-      selected_seats, 
-      event_title, 
-      event_date, 
-      event_time 
+// --- CORS HEADERS ARE STILL NEEDED ---
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*', // Allow any origin
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Helper to create a response WITH CORS
+const createResponse = (data: any, status: number, headers: Record<string, string> = {}) => {
+  return new Response(JSON.stringify(data), {
+    status: status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders, ...headers },
+  });
+};
+
+serve(async (req) => {
+  // Handle CORS preflight "OPTIONS" request
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders, status: 200 });
+  }
+
+  // 1. Check secret
+  const url = new URL(req.url);
+  const secret = url.searchParams.get('secret');
+  if (secret !== WEBHOOK_SECRET) {
+    console.warn("Invalid webhook secret received.");
+    return createResponse({ message: 'Invalid secret' }, 401);
+  }
+
+  // 2. Check method and get data
+  if (req.method !== 'POST') {
+    return createResponse({ message: 'Method not allowed' }, 405);
+  }
+
+  let record: any;
+  try {
+    const body = await req.json();
+    record = body.record; // We ONLY expect the record now
+
+    if (!record) {
+      return createResponse({ message: 'Missing "record" in request body' }, 400);
+    }
+  } catch (err) {
+    return createResponse({ message: `Failed to parse body: ${err.message}` }, 400);
+  }
+
+  // 3. Send Email (This is now the only job)
+  try {
+    const {
+      customer_name,
+      customer_email,
+      event_title,
+      event_date,
+      event_time,
+      selected_seats,
     } = record;
 
     if (!customer_email) {
       throw new Error("Customer email is missing from the booking record.");
     }
 
-    console.log(`Attempting to send an email to ${customer_email}...`);
+    console.log(`[Function] Attempting to send an email to ${customer_email}...`);
 
-    const { data, error } = await resend.emails.send({
-      from: "TEDxAUC Confirmation <onboarding@resend.dev>",
-      to: [customer_email],
-      subject: `Your Ticket Confirmation for ${event_title}`,
-      html: `
+    // --- Your Original HTML Template ---
+    const emailHtml = `
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -106,26 +149,26 @@ serve(async (req) => {
           </table>
         </body>
         </html>
-      `,
+      `;
+
+    const { data, error } = await resend.emails.send({
+      // Replace 'bookings' with whatever you prefer (e.g., 'noreply', 'confirmations')
+from: "TEDxAUC Confirmation <bookings@tedxamity.com>",
+      to: [customer_email],
+      subject: `Your Ticket Confirmation for ${event_title}`,
+      html: emailHtml,
     });
 
     if (error) {
-      console.error("Resend API Error:", error);
+      console.error("[Function] Resend API Error:", error);
       throw new Error(error.message);
     }
 
-    console.log("Email sent successfully! Response:", data);
-
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.log("[Function] Email sent successfully! Response:", data);
+    return createResponse(data, 200);
 
   } catch (err) {
-    console.error("An error occurred in the Edge Function:", err);
-    return new Response(String(err?.message ?? err), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error('[Function] Email sending failed:', err.message);
+    return createResponse({ message: `Email sending failed: ${err.message}` }, 500);
   }
 });
