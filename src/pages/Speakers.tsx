@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Instagram, Linkedin, Twitter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,44 +22,15 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { TablesInsert } from "@/integrations/supabase/types";
+import { Tables, TablesInsert } from "@/integrations/supabase/types";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const speakers = [
-    {
-    id: 1,
-    name: "Dr. Sarah Johnson",
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
-  },
-  {
-    id: 2,
-    name: "Prof. Michael Chen",
-    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop",
-  },
-  {
-    id: 3,
-    name: "Dr. Emily Rodriguez",
-    image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=400&fit=crop",
-  },
-  {
-    id: 4,
-    name: "Dr. James Wilson",
-    image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop",
-  },
-  {
-    id: 5,
-    name: "Dr. Aisha Patel",
-    image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=400&fit=crop",
-  },
-  {
-    id: 6,
-    name: "Prof. David Kim",
-    image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop",
-  },
-];
+// Define the Speaker interface based on your Supabase table for clear typing
+interface SpeakerData extends Tables<"speakers"> {}
 
 const Speakers = () => {
-  const [isPaused, setIsPaused] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // Removed carousel state and logic: isPaused, scrollRef, handleScroll
+  
   const [formData, setFormData] = useState({
     name: "",
     gender: "",
@@ -67,16 +38,36 @@ const Speakers = () => {
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [speakers, setSpeakers] = useState<SpeakerData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleScroll = (direction: "left" | "right") => {
-    if (scrollRef.current) {
-      const scrollAmount = 300;
-      scrollRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
+  // --- START: Data Fetching Logic ---
+  const fetchSpeakers = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Fetch all speaker data from the 'speakers' table
+      const { data, error } = await supabase
+        .from('speakers')
+        .select('*')
+        .order('id', { ascending: true }); 
+
+      if (error) throw error;
+
+      setSpeakers(data);
+
+    } catch (error) {
+      console.error("Error fetching speakers:", error);
+      toast.error("Could not load speakers. Please refresh.");
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchSpeakers();
+  }, [fetchSpeakers]);
+  // --- END: Data Fetching Logic ---
 
   const handleSpeakerRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +90,6 @@ const Speakers = () => {
 
       toast.success("Registration successful! We'll be in touch soon.");
       setFormData({ name: "", gender: "", occupation: "", message: "" });
-      // Note: We could programmatically close the dialog here, but for now we'll let the user do it.
     } catch (error: any) {
       console.error("Error submitting speaker registration:", error);
       toast.error(`Registration failed: ${error.message}`);
@@ -107,6 +97,104 @@ const Speakers = () => {
       setIsSubmitting(false);
     }
   };
+  
+  // --- START: Updated SpeakerCard Component for Image Zoom Fix ---
+  const SpeakerCard = ({ speaker }: { speaker: SpeakerData }) => (
+    <div 
+      // Removed hover:scale-[1.03] from here
+      className="flex flex-col text-center transition-all duration-300 animate-fade-in group"
+    >
+      {/* Image Container with Circle Effect */}
+      <div className="relative mx-auto w-full max-w-[200px] mb-6">
+        <div className="w-full pt-[100%] relative rounded-full overflow-hidden border-4 border-primary/50 transition-all duration-300">
+          <img
+            src={speaker.image_url}
+            alt={speaker.name}
+            // Increased the hover zoom effect on the image itself
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.15]"
+            onError={(e) => {
+               // Fallback to a placeholder image if the provided URL fails to load
+               e.currentTarget.onerror = null; 
+               e.currentTarget.src = 'https://images.unsplash.com/photo-1598550874175-4d0efbd42963?w=400&h=400&fit=crop';
+               e.currentTarget.style.filter = 'grayscale(100%)';
+            }}
+          />
+        </div>
+      </div>
+      
+      {/* Details Section (Text remains stable) */}
+      <div className="px-2">
+        <h3 className="text-xl font-bold mb-1 text-foreground">
+          {speaker.name}
+        </h3>
+        <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-2">
+          {speaker.profession}
+        </p>
+        <p className="text-xs text-muted-foreground mb-4 line-clamp-3 min-h-[48px]">
+          {speaker.about_text}
+        </p>
+        
+        {/* Social Links */}
+        <div className="flex justify-center gap-4">
+          {speaker.linkedin_url && (
+            <a 
+              href={speaker.linkedin_url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-muted-foreground hover:text-blue-600 transition-colors"
+            >
+              <Linkedin className="h-4 w-4" />
+            </a>
+          )}
+          {speaker.instagram_url && (
+            <a 
+              href={speaker.instagram_url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-muted-foreground hover:text-pink-500 transition-colors"
+            >
+              <Instagram className="h-4 w-4" />
+            </a>
+          )}
+          {speaker.twitter_url && (
+            <a 
+              href={speaker.twitter_url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-muted-foreground hover:text-blue-400 transition-colors"
+            >
+              <Twitter className="h-4 w-4" />
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+  // --- END: Updated SpeakerCard Component ---
+  
+  const SpeakerSkeleton = () => (
+    <div className="flex flex-col text-center">
+        <div className="relative mx-auto w-full max-w-[200px] mb-6">
+            <div className="w-full pt-[100%] relative rounded-full overflow-hidden">
+                <Skeleton className="absolute inset-0 w-full h-full rounded-full" />
+            </div>
+        </div>
+        <div className="px-2 space-y-2">
+            <Skeleton className="h-6 w-3/4 mx-auto" />
+            <Skeleton className="h-4 w-1/2 mx-auto" />
+            <div className="space-y-1 mb-4">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-11/12" />
+                <Skeleton className="h-3 w-10/12 mx-auto" />
+            </div>
+             <div className="flex justify-center gap-4">
+                <Skeleton className="h-4 w-4 rounded-full" />
+                <Skeleton className="h-4 w-4 rounded-full" />
+                <Skeleton className="h-4 w-4 rounded-full" />
+            </div>
+        </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-background">
@@ -122,58 +210,32 @@ const Speakers = () => {
         </div>
       </section>
 
-      {/* Speakers Carousel */}
+      {/* Speakers Grid */}
       <section className="py-16 px-6 bg-muted/30">
         <div className="max-w-7xl mx-auto">
-          <div className="relative">
-            <button
-              onMouseEnter={() => setIsPaused(true)}
-              onMouseLeave={() => setIsPaused(false)}
-              onClick={() => handleScroll("left")}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm p-3 rounded-full shadow-lg hover:bg-background transition-all"
-            >
-              <ChevronLeft className="w-6 h-6 text-primary" />
-            </button>
-            
-            <button
-              onMouseEnter={() => setIsPaused(true)}
-              onMouseLeave={() => setIsPaused(false)}
-              onClick={() => handleScroll("right")}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm p-3 rounded-full shadow-lg hover:bg-background transition-all"
-            >
-              <ChevronRight className="w-6 h-6 text-primary" />
-            </button>
-
-            <div
-              ref={scrollRef}
-              className="overflow-x-hidden mx-12"
-            >
-              <div className={`flex gap-8 ${!isPaused ? 'animate-scroll' : ''}`}>
-                {[...speakers, ...speakers, ...speakers].map((speaker, index) => (
-                  <div
-                    key={`${speaker.id}-${index}`}
-                    className="flex-shrink-0 w-64 text-center"
-                    onMouseEnter={() => setIsPaused(true)}
-                    onMouseLeave={() => setIsPaused(false)}
-                  >
-                    <div className="relative overflow-hidden rounded-2xl mb-4 group">
-                      <img
-                        src={speaker.image}
-                        alt={speaker.name}
-                        className="w-64 h-64 object-cover transition-transform duration-500 group-hover:scale-110"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-foreground">{speaker.name}</h3>
-                  </div>
-                ))}
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 md:gap-12 justify-items-center">
+                {isLoading 
+                    ? [...Array(4)].map((_, index) => <SpeakerSkeleton key={index} />)
+                    : speakers.length > 0 ? (
+                        speakers.map((speaker, index) => (
+                            <SpeakerCard key={speaker.id} speaker={speaker} />
+                        ))
+                    ) : (
+                        <div className="col-span-full text-center py-16 w-full">
+                            <h3 className="text-2xl font-bold mb-4 text-muted-foreground">
+                                No speakers found
+                            </h3>
+                            <p className="text-muted-foreground">
+                                Please add speaker entries to the 'speakers' table in your Supabase dashboard.
+                            </p>
+                        </div>
+                    )
+                }
             </div>
-          </div>
         </div>
       </section>
 
-      {/* Register as Speaker Section */}
+      {/* Register as Speaker Section (Remains the same) */}
       <section className="py-20 px-6">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-4xl font-bold mb-6 gradient-text">

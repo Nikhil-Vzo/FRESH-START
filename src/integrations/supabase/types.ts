@@ -108,40 +108,41 @@ export type Database = {
         }
         Relationships: []
       }
-      profiles: { // <-- RE-ADDED PROFILE TABLE DEFINITION
+      speakers: { // <--- NEW SPEAKERS TABLE ADDED
         Row: {
-          id: string
-          updated_at: string | null
-          full_name: string | null
-          phone: string | null
-          address: string | null
-          profession: string | null
+          id: number
+          created_at: string
+          name: string
+          image_url: string
+          profession: string
+          about_text: string
+          instagram_url: string | null
+          linkedin_url: string | null
+          twitter_url: string | null
         }
         Insert: {
-          id: string
-          updated_at?: string | null
-          full_name?: string | null
-          phone?: string | null
-          address?: string | null
-          profession?: string | null
+          id?: number
+          created_at?: string
+          name: string
+          image_url: string
+          profession: string
+          about_text: string
+          instagram_url?: string | null
+          linkedin_url?: string | null
+          twitter_url?: string | null
         }
         Update: {
-          id?: string
-          updated_at?: string | null
-          full_name?: string | null
-          phone?: string | null
-          address?: string | null
-          profession?: string | null
+          id?: number
+          created_at?: string
+          name?: string
+          image_url?: string
+          profession?: string
+          about_text?: string
+          instagram_url?: string | null
+          linkedin_url?: string | null
+          twitter_url?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       speaker_registrations: { // <-- NEW TABLE DEFINITION
         Row: {
